@@ -1,6 +1,7 @@
 const std = @import("std");
+const Build = std.Build;
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const yacc_dep = b.dependency("yacc", .{});
@@ -63,9 +64,40 @@ pub fn build(b: *std.Build) void {
         .root_module = mod,
     });
     b.installArtifact(exe);
+
     const run = b.addRunArtifact(exe);
-    if (b.args) |args| {
-        run.addArgs(args);
-    }
+    passthroughArgs(b, run);
     b.step("run", "run yacc").dependOn(&run.step);
+
+    const fmt = addFmt(b);
+    b.step("fmt", "zig fmt").dependOn(&fmt.step);
+}
+
+// zig 0.17.0 and 0.16.0 compatible args passthrough function
+inline fn passthroughArgs(b: *Build, run: *Build.Step.Run) void {
+    if (comptime @import("builtin").zig_version.order(std.SemanticVersion.parse("0.16.0") catch unreachable) == .gt) {
+        run.addPassthruArgs();
+    } else {
+        if (b.args) |args| {
+            for (args) |arg| run.addArg(arg);
+        }
+    }
+}
+
+inline fn addFmt(b: *Build) *Build.Step.Fmt {
+    if (comptime @import("builtin").zig_version.order(std.SemanticVersion.parse("0.16.0") catch unreachable) == .gt) {
+        return b.addFmt(.{
+            .paths = &.{
+                b.path("build.zig"),
+                b.path("build.zig.zon"),
+            },
+        });
+    } else {
+        return b.addFmt(.{
+            .paths = &.{
+                "build.zig",
+                "build.zig.zon",
+            },
+        });
+    }
 }
